@@ -1,0 +1,4 @@
+room_id,room_type,price,status
+101,Single,100,under maintenance
+102,Double,150,available
+103,Single,100,booked
