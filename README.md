@@ -61,3 +61,10 @@ To run the system:
 2. Run the script `main.py`:
    ```bash
    python main.py
+
+## Screenshots of Application
+
+ ![alt text](images/roomreservation_with_Invoice.png)
+
+ ![alt text](images/roomreservation_with_validations.png)
+ 
