@@ -1,4 +1,5 @@
 import pandas as pd
+from datetime import datetime
 
 # Load existing data from CSVs (for persistence)
 rooms_df = pd.read_csv("rooms.csv", dtype=str)
@@ -8,21 +9,21 @@ reservations_df = pd.read_csv("reservations.csv", dtype=str)
 # Room and Guest Management
 
 class Room:
-    def __init__(self, room_id, room_type, price):
+    def __init__(self, room_id, room_type, price, room_demand=0):
         self.room_id = room_id
         self.room_type = room_type
         self.price = price
+        self.room_demand = room_demand  # For dynamic pricing
 
     def save(self):
-        # Declare global for rooms_df
         global rooms_df
-        # Save room details to the CSV (avoid duplicates)
         if self.room_id not in rooms_df['room_id'].values:
             new_room = pd.DataFrame({
                 "room_id": [self.room_id],
                 "room_type": [self.room_type],
                 "price": [self.price],
-                "status": ["available"]
+                "status": ["available"],
+                "room_demand": [self.room_demand]
             })
             rooms_df = pd.concat([rooms_df, new_room], ignore_index=True)
             rooms_df.to_csv("rooms.csv", index=False)
@@ -31,37 +32,76 @@ class Room:
 
     @staticmethod
     def list_rooms():
-        # Declare global for rooms_df
         global rooms_df
         return rooms_df
 
     @staticmethod
-    def check_availability(room_id):
-        global rooms_df
-        # Check if the room is available
+    def check_availability(room_id, booking_date):
+        global rooms_df, reservations_df
+        # Check if the room is available for the given date
         room = rooms_df.loc[rooms_df['room_id'] == room_id]
-        if room['status'].values[0] == "available":
-            return True
-        else:
+        if room['status'].values[0] != "available":
             return False
 
+        # Check if the room is already booked for the given date
+        conflict = reservations_df[reservations_df['room_id'] == room_id]
+        if booking_date in conflict['booking_date'].values:
+            print(f"Room {room_id} is already booked on {booking_date}.")
+            return False
+        return True
+
+    @staticmethod
+    def dynamic_pricing(room_id):
+        global rooms_df
+        room = rooms_df.loc[rooms_df['room_id'] == room_id]
+
+        # Convert 'room_demand' to an integer for correct pricing calculation
+        room_demand = int(room['room_demand'].values[0])  # Ensure room_demand is treated as an integer
+        
+        demand_multiplier = 1 + (room_demand * 0.1)  # Increase price by 10% per demand point
+        return float(room['price'].values[0]) * demand_multiplier
+
+# New Validation for Booking Date
+def validate_booking_date(booking_date):
+    try:
+        # Check if the booking date is in the future
+        booking_date_obj = datetime.strptime(booking_date, "%Y-%m-%d")
+        if booking_date_obj < datetime.now():
+            print("Error: Booking date cannot be in the past.")
+            return False
+        return True
+    except ValueError:
+        print("Error: Invalid date format. Please use YYYY-MM-DD format.")
+        return False
+
 class Guest:
-    def __init__(self, name, contact_number, email):
+    def __init__(self, name, contact_number, email, preferences=None, loyalty_program=False):
         self.name = name
         self.contact_number = contact_number
         self.email = email
+        self.preferences = preferences if preferences else {}
+        self.loyalty_program = loyalty_program
 
     def save(self):
-        # Declare global for guests_df
         global guests_df
-        # Save guest details to the CSV
+        # Check if email or phone number is already taken
+        if self.email in guests_df['email'].values:
+            print(f"Error: The email {self.email} is already in use.")
+            return False
+        if self.contact_number in guests_df['contact_number'].values:
+            print(f"Error: The contact number {self.contact_number} is already in use.")
+            return False
+
         new_guest = pd.DataFrame({
             "name": [self.name],
             "contact_number": [self.contact_number],
-            "email": [self.email]
+            "email": [self.email],
+            "preferences": [str(self.preferences)],
+            "loyalty_program": [self.loyalty_program]
         })
         guests_df = pd.concat([guests_df, new_guest], ignore_index=True)
         guests_df.to_csv("guests.csv", index=False)
+        return True
 
 class Reservation:
     def __init__(self, guest, room, booking_date):
@@ -70,8 +110,13 @@ class Reservation:
         self.booking_date = booking_date
 
     def save(self):
-        # Declare global for rooms_df and reservations_df
         global rooms_df, reservations_df
+
+        # Check if overbooking occurs
+        if not Room.check_availability(self.room.room_id, self.booking_date):
+            print("Reservation failed due to overbooking conflict.")
+            return
+
         # Save reservation details to the reservations CSV
         reservation_data = pd.DataFrame({
             "guest_name": [self.guest.name],
@@ -81,41 +126,24 @@ class Reservation:
         rooms_df.loc[rooms_df['room_id'] == self.room.room_id, 'status'] = "booked"
         rooms_df.to_csv("rooms.csv", index=False)
 
-        # Save to reservations.csv
         reservations_df = pd.concat([reservations_df, reservation_data], ignore_index=True)
         reservations_df.to_csv("reservations.csv", index=False)
 
         print(f"Reservation for {self.guest.name} confirmed for room {self.room.room_id} on {self.booking_date}.")
 
-# Check-In/Check-Out Management
+        bill = Billing(reservation=self, payment_method="credit card", amount_paid=self.room.price, advance_payment=True)
+        bill.generate_invoice()
+        bill.process_payment()
 
-class CheckInOut:
-    @staticmethod
-    def check_in(reservation):
-        global rooms_df
-        # Mark the room as 'occupied'
-        rooms_df.loc[rooms_df['room_id'] == reservation.room.room_id, 'status'] = "occupied"
-        rooms_df.to_csv("rooms.csv", index=False)
-        print(f"Checked in {reservation.guest.name} to room {reservation.room.room_id}.")
-
-    @staticmethod
-    def check_out(reservation):
-        global rooms_df
-        # Mark the room as 'available' again
-        rooms_df.loc[rooms_df['room_id'] == reservation.room.room_id, 'status'] = "available"
-        rooms_df.to_csv("rooms.csv", index=False)
-        print(f"Checked out {reservation.guest.name} from room {reservation.room.room_id}.")
-
-# Basic Billing System
-
+# Billing System
 class Billing:
-    def __init__(self, reservation, payment_method, amount_paid):
+    def __init__(self, reservation, payment_method, amount_paid, advance_payment=False):
         self.reservation = reservation
         self.payment_method = payment_method
         self.amount_paid = amount_paid
+        self.advance_payment = advance_payment
 
     def generate_invoice(self):
-        # Generate the invoice
         invoice = f"""
         Hotel Invoice
         -------------------------
@@ -125,6 +153,7 @@ class Billing:
         Amount: {self.reservation.room.price}
         Payment Method: {self.payment_method}
         Amount Paid: {self.amount_paid}
+        Advance Payment: {self.advance_payment}
         -------------------------
         Thank you for choosing our hotel!
         """
@@ -132,25 +161,7 @@ class Billing:
         return invoice
 
     def process_payment(self):
-        # Process payment (This could be more complex with a payment gateway integration)
         print(f"Payment of {self.amount_paid} processed using {self.payment_method}.")
-
-# Room Management (Cleaning, Maintenance, and Availability)
-
-class RoomManagement:
-    @staticmethod
-    def mark_as_clean(room_id):
-        global rooms_df
-        rooms_df.loc[rooms_df['room_id'] == room_id, 'status'] = "clean"
-        rooms_df.to_csv("rooms.csv", index=False)
-        print(f"Room {room_id} marked as clean.")
-
-    @staticmethod
-    def mark_as_under_maintenance(room_id):
-        global rooms_df
-        rooms_df.loc[rooms_df['room_id'] == room_id, 'status'] = "under maintenance"
-        rooms_df.to_csv("rooms.csv", index=False)
-        print(f"Room {room_id} marked as under maintenance.")
 
 # Function to Reserve a Room
 def reserve_room():
@@ -158,9 +169,12 @@ def reserve_room():
     name = input("Enter your name: ")
     contact_number = input("Enter your contact number: ")
     email = input("Enter your email address: ")
+    preferences = input("Enter any preferences (e.g., king bed, ocean view): ")
+    loyalty_program = input("Are you a loyalty program member? (yes/no): ").lower() == 'yes'
 
-    guest = Guest(name=name, contact_number=contact_number, email=email)
-    guest.save()
+    guest = Guest(name=name, contact_number=contact_number, email=email, preferences=preferences, loyalty_program=loyalty_program)
+    if not guest.save():
+        return  # Stop execution if validation fails
 
     # List available rooms
     available_rooms = rooms_df[rooms_df['status'] == "available"]
@@ -173,47 +187,27 @@ def reserve_room():
 
     # Choose a room to book
     room_id = input("Enter the room_id you want to book: ")
-    if not Room.check_availability(room_id):
-        print("The selected room is not available. Please try again.")
-        return
-
-    # Select a booking date
     booking_date = input("Enter your booking date (YYYY-MM-DD): ")
 
-    # Create reservation
-    selected_room = Room(room_id=room_id, room_type=available_rooms.loc[available_rooms['room_id'] == room_id, 'room_type'].values[0], 
-                         price=available_rooms.loc[available_rooms['room_id'] == room_id, 'price'].values[0])
-    
-    reservation = Reservation(guest=guest, room=selected_room, booking_date=booking_date)
+    # Validate the booking date
+    if not validate_booking_date(booking_date):
+        return  # Stop execution if date validation fails
+
+    if not Room.check_availability(room_id, booking_date):
+        return  # Stop execution if room is not available for the given date
+
+    # Dynamic pricing based on room demand
+    room = Room(room_id=room_id, room_type=available_rooms.loc[available_rooms['room_id'] == room_id, 'room_type'].values[0],
+                price=available_rooms.loc[available_rooms['room_id'] == room_id, 'price'].values[0])
+    room.price = Room.dynamic_pricing(room_id)
+
+    reservation = Reservation(guest=guest, room=room, booking_date=booking_date)
     reservation.save()
 
 # Main System Workflow
 
 def main():
-    # Reserve a room for the guest
     reserve_room()
-
-    # Get the reservation and check-in
-    guest = guests_df.iloc[-1]  # Get the most recently added guest
-    room = rooms_df.loc[rooms_df['status'] == "booked"].iloc[0]  # Get the most recently booked room
-    reservation1 = Reservation(guest=Guest(name=guest['name'], contact_number=guest['contact_number'], email=guest['email']),
-                               room=Room(room_id=room['room_id'], room_type=room['room_type'], price=room['price']),
-                               booking_date="2025-03-27")
-
-    check_in = CheckInOut()
-    check_in.check_in(reservation1)
-
-    # Generate the bill
-    bill1 = Billing(reservation1, payment_method="credit card", amount_paid="100")
-    bill1.generate_invoice()
-    bill1.process_payment()
-
-    # Mark room 101 as clean and under maintenance
-    RoomManagement.mark_as_clean("101")
-    RoomManagement.mark_as_under_maintenance("101")
-
-    # Check-out guest1
-    check_in.check_out(reservation1)
 
 if __name__ == "__main__":
     main()
