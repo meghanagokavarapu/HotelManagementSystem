@@ -1,0 +1,5 @@
+customer_name,email,phone_number,booked_date,hotel_id,guest_name,room_id,booking_date
+John Doe,john.doe@example.com,1234567890,2025-05-01,H001
+Jane Smith,jane.smith@example.com,9876543210,2025-06-15,H002
+Alice Johnson,alice.johnson@example.com,5555555555,2025-07-10,H003
+Bob Brown,bob.brown@example.com,4444444444,2025-08-20,H001
