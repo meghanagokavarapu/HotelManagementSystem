@@ -1,5 +1,8 @@
-name,contact_number,email
-John Doe,1234567890,john.doe@example.com
-Jane Smith,9876543210,jane.smith@example.com
-Alice Johnson,5555555555,alice.johnson@example.com
-Bob Brown,4444444444,bob.brown@example.com
+name,contact_number,email,preferences,loyalty_program
+John Doe,1234567890,john.doe@example.com,True
+Jane Smith,9876543210,jane.smith@example.com,False
+Alice Johnson,5555555555,alice.johnson@example.com,True
+Bob Brown,4444444444,bob.brown@example.com,False
+akanksha,2345688967,akanksha45@gmail.com,king bed,False
+subhalakshmi,2345678965,subha456@gmail.com,ocean view,True
+subhalakshmi,1234534626,subha789@gmail.com,king bed,False
